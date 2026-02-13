@@ -253,3 +253,92 @@ func TestUpdateMetrics_DiscoveryJob(t *testing.T) {
 	err = testutil.GatherAndCompare(registry, strings.NewReader(expectedMetric))
 	require.NoError(t, err)
 }
+
+func TestUpdateMetrics_IpamJob(t *testing.T) {
+	ctx := context.Background()
+	logger := promslog.NewNopLogger()
+
+	// Create a discovery job configuration for AWS/IPAM
+	svc := config.SupportedServices.GetService("AWS/IPAM")
+	jobsCfg := model.JobsConfig{
+		DiscoveryJobs: []model.DiscoveryJob{
+			{
+				Namespace: "AWS/IPAM",
+				Regions:   []string{"us-east-1"},
+				Roles:     []model.Role{{}},
+				SearchTags: []model.SearchTag{
+					{Key: "Environment", Value: regexp.MustCompile(".*")},
+				},
+				Metrics: []*model.MetricConfig{
+					{
+						Name:       "SubnetIPUsage",
+						Statistics: []string{"Maximum"},
+						Period:     300,
+						Length:     300,
+					},
+				},
+				DimensionsRegexps: svc.ToModelDimensionsRegexp(),
+			},
+		},
+	}
+
+	factory := &mockFactory{
+		accountClient: mockAccountClient{
+			accountID:    "123456789012",
+			accountAlias: "test-account",
+		},
+		taggingClient: mockTaggingClient{
+			resources: []*model.TaggedResource{
+				{
+					ARN:       "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-abc123",
+					Namespace: "AWS/IPAM",
+					Region:    "us-east-1",
+					Tags: []model.Tag{
+						{Key: "Environment", Value: "production"},
+						{Key: "Name", Value: "test-subnet"},
+					},
+				},
+			},
+		},
+		cloudwatchClient: mockCloudwatchClient{
+			metrics: []*model.Metric{
+				{
+					MetricName: "SubnetIPUsage",
+					Namespace:  "AWS/IPAM",
+					Dimensions: []model.Dimension{
+						{Name: "SubnetID", Value: "subnet-abc123"},
+						{Name: "VpcID", Value: "vpc-12345"},
+						{Name: "ScopeID", Value: "ipam-scope-67890"},
+						{Name: "OwnerID", Value: "123456789012"},
+						{Name: "Region", Value: "us-east-1"},
+						{Name: "AddressFamily", Value: "ipv4"},
+					},
+				},
+			},
+			metricDataResults: []cloudwatch.MetricDataResult{
+				{
+					ID: "id_0",
+					DataPoints: []cloudwatch.DataPoint{
+						{Value: aws.Float64(92.5), Timestamp: time.Now()},
+					},
+				},
+			},
+		},
+	}
+
+	registry := prometheus.NewRegistry()
+
+	err := UpdateMetrics(ctx, logger, jobsCfg, registry, factory)
+	require.NoError(t, err)
+
+	expectedMetric := `
+		# HELP aws_ipam_subnet_ipusage_maximum Help is not implemented yet.
+		# TYPE aws_ipam_subnet_ipusage_maximum gauge
+		aws_ipam_subnet_ipusage_maximum{account_alias="test-account",account_id="123456789012",dimension_AddressFamily="ipv4",dimension_OwnerID="123456789012",dimension_Region="us-east-1",dimension_ScopeID="ipam-scope-67890",dimension_SubnetID="subnet-abc123",dimension_VpcID="vpc-12345",name="arn:aws:ec2:us-east-1:123456789012:subnet/subnet-abc123",region="us-east-1"} 92.5
+		# HELP aws_ipam_info Help is not implemented yet.
+		# TYPE aws_ipam_info gauge
+		aws_ipam_info{name="arn:aws:ec2:us-east-1:123456789012:subnet/subnet-abc123",tag_Environment="production",tag_Name="test-subnet"} 0
+	`
+	err = testutil.GatherAndCompare(registry, strings.NewReader(expectedMetric))
+	require.NoError(t, err)
+}
