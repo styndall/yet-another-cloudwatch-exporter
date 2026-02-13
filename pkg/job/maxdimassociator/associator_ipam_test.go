@@ -27,8 +27,14 @@ var ec2IpamPool = &model.TaggedResource{
 	Namespace: "AWS/IPAM",
 }
 
+var ec2Subnet = &model.TaggedResource{
+	ARN:       "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-0123456789abcdef0",
+	Namespace: "AWS/IPAM",
+}
+
 var ipamResources = []*model.TaggedResource{
 	ec2IpamPool,
+	ec2Subnet,
 }
 
 func TestAssociatorIpam(t *testing.T) {
@@ -72,6 +78,48 @@ func TestAssociatorIpam(t *testing.T) {
 					Namespace:  "AWS/IPAM",
 					Dimensions: []model.Dimension{
 						{Name: "IpamPoolId", Value: "ipam-pool-blahblah"},
+					},
+				},
+			},
+			expectedSkip:     true,
+			expectedResource: nil,
+		},
+		{
+			name: "should match SubnetIPUsage with SubnetID dimension",
+			args: args{
+				dimensionRegexps: config.SupportedServices.GetService("AWS/IPAM").ToModelDimensionsRegexp(),
+				resources:        ipamResources,
+				metric: &model.Metric{
+					MetricName: "SubnetIPUsage",
+					Namespace:  "AWS/IPAM",
+					Dimensions: []model.Dimension{
+						{Name: "SubnetID", Value: "subnet-0123456789abcdef0"},
+						{Name: "VpcID", Value: "vpc-abc123"},
+						{Name: "ScopeID", Value: "ipam-scope-def456"},
+						{Name: "OwnerID", Value: "123456789012"},
+						{Name: "Region", Value: "us-east-1"},
+						{Name: "AddressFamily", Value: "IPv4"},
+					},
+				},
+			},
+			expectedSkip:     false,
+			expectedResource: ec2Subnet,
+		},
+		{
+			name: "should skip with unmatched SubnetID dimension",
+			args: args{
+				dimensionRegexps: config.SupportedServices.GetService("AWS/IPAM").ToModelDimensionsRegexp(),
+				resources:        ipamResources,
+				metric: &model.Metric{
+					MetricName: "SubnetIPUsage",
+					Namespace:  "AWS/IPAM",
+					Dimensions: []model.Dimension{
+						{Name: "SubnetID", Value: "subnet-nonexistent"},
+						{Name: "VpcID", Value: "vpc-abc123"},
+						{Name: "ScopeID", Value: "ipam-scope-def456"},
+						{Name: "OwnerID", Value: "123456789012"},
+						{Name: "Region", Value: "us-east-1"},
+						{Name: "AddressFamily", Value: "IPv4"},
 					},
 				},
 			},

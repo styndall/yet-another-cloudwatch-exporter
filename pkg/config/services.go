@@ -1056,9 +1056,11 @@ var SupportedServices = serviceConfigs{
 		Alias:     "ipam",
 		ResourceFilters: []*string{
 			aws.String("ec2:ipam-pool"),
+			aws.String("ec2:subnet"),
 		},
 		DimensionRegexps: []*regexp.Regexp{
 			regexp.MustCompile(":ipam-pool/(?P<IpamPoolId>[^/]+)$"),
+			regexp.MustCompile(":subnet/(?P<SubnetID>[^/]+)$"),
 		},
 	},
 	{
